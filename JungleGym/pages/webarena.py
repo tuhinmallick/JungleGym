@@ -12,6 +12,7 @@ Version: 1.0.0
 Status: Development
 Python version: 3.9.15
 """
+
 #External libraries:
 import streamlit as st
 import pandas as pd
@@ -27,7 +28,7 @@ API_ENDPOINT = 'http://api.junglegym.ai'
 MIND2WEB_API_KEY = os.environ.get('MIND2WEB_API_KEY', default='')
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer {}'.format(MIND2WEB_API_KEY)
+    'Authorization': f'Bearer {MIND2WEB_API_KEY}',
 }
 
 init_page()
@@ -62,7 +63,7 @@ API_ENDPOINT = 'http://api.junglegym.ai'
 API_KEY = os.environ.get('MIND2WEB_API_KEY', default='')
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer {}'.format(API_KEY)
+    'Authorization': f'Bearer {API_KEY}',
 }
 
 # Load light dataset and cache it for faster loading
@@ -72,8 +73,7 @@ def load_tasks():
     if response.status_code == 200:
         try:
             response = json.loads(response.text)
-            df = pd.DataFrame(response['data'])
-            return df
+            return pd.DataFrame(response['data'])
         except json.JSONDecodeError as e:
             print(e)
             return None
@@ -155,8 +155,7 @@ if domain_selection != 'All':
     df_tasks = df_tasks[df_tasks['start_url_junglegym'] == nickname_to_name[domain_selection]]
 
 height = 45 * len(df_tasks)#45 is roughly the height of each row in the dataframe
-if height > 500:
-    height = 500
+height = min(height, 500)
 df_tasks = df_tasks.rename(columns={'intent':'Task', 'start_url_junglegym': 'Domain'})#Rename columns for readability
 df_tasks = df_tasks.reset_index(drop=True)
 # st.dataframe(df_tasks, use_container_width=True, height=height)
@@ -181,7 +180,7 @@ df_tasks = df_tasks.reset_index(drop=True)
 task_list = df_tasks['Task'].tolist()
 task = st.selectbox('Select task to see task data:', options =[''] + task_list)
 if len(task) > 0:
-    params = {"task": task} 
+    params = {"task": task}
     task_response = requests.get(API_ENDPOINT + "/get_webarena_by_task", params=params)
     # Check if the request was successful
     if task_response.status_code == 200:
@@ -203,18 +202,18 @@ if len(task) > 0:
         if isinstance(ground_truth, list):
             ground_truth = ", ".join(ground_truth)
 
-        st.markdown(f"*Domain: " + link_to_name[data["start_url_junglegym"]] + "*")
-        st.markdown(f"*Ground truth response (if applicable): " + str(ground_truth) + "*")
-        st.markdown(f"*Start URL*: " + data["start_url"])
+        st.markdown("*Domain: " + link_to_name[data["start_url_junglegym"]] + "*")
+        st.markdown(f"*Ground truth response (if applicable): {str(ground_truth)}*")
+        st.markdown("*Start URL*: " + data["start_url"])
         if data["require_login"] == True:
             print (link_to_name[data["start_url_junglegym"]])
-            if "http://cms.junglegym.ai/admin" == data["start_url_junglegym"]:
-                st.markdown(f"*Login required*: Yes (username: admin, password: admin1234)")
+            if data["start_url_junglegym"] == "http://cms.junglegym.ai/admin":
+                st.markdown("*Login required*: Yes (username: admin, password: admin1234)")
             else:
-                st.markdown(f"*Login required*: Yes")
+                st.markdown("*Login required*: Yes")
         else:
-            st.markdown(f"*Login required*: No")
-        st.markdown(f"*Task JSON data*: ")
+            st.markdown("*Login required*: No")
+        st.markdown("*Task JSON data*: ")
         # Convert JSON object to formatted string
         json_str = json.dumps(extracted_data, indent=4)
         # Display on Streamlit

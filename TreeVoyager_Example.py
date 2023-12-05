@@ -23,7 +23,7 @@ def run_task(task, url, curriculum, prev_code, step_name):
     }
     response = requests.get(TREE_VOYAGER_SERVER_ENDPOINT + "/run_step", params=params, stream=True)
     if response.status_code != 200:
-        print("Error running task: " + str(response.status_code))
+        print(f"Error running task: {response.status_code}")
     try:
         for line in response.iter_lines():
             decoded_line = line.decode('utf-8')
@@ -50,7 +50,7 @@ def run_task(task, url, curriculum, prev_code, step_name):
                 # Display the streamed outputs of the API call in a box
                 if 'step_tag_name' in data and 'step_field_name' in data and 'step_duration' in data and 'step_total_tokens' in data:
                     model_name = data['model']
-                    if "gpt-4-1106-preview" in data['model']:
+                    if "gpt-4-1106-preview" in model_name:
                         model_name = "gpt-4-1106-preview (GPT-4-Turbo 128K)"
                     info_data = {
                         'HTML id':data['step_html_id'],

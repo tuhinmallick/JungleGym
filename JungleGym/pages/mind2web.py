@@ -12,6 +12,7 @@ Version: 0.9 (Experimental)
 Status: Development
 Python version: 3.9.15
 """
+
 #External libraries:
 import streamlit as st
 import pandas as pd
@@ -32,7 +33,7 @@ MIND2WEB_ENDPOINT = 'http://api.junglegym.ai'
 MIND2WEB_API_KEY = os.environ.get('MIND2WEB_API_KEY', default='')
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer {}'.format(MIND2WEB_API_KEY)
+    'Authorization': f'Bearer {MIND2WEB_API_KEY}',
 }
 
 # if 'showing_subset_data' not in st.session_state:
@@ -51,8 +52,7 @@ def load_light_train_dataset():
     if response.status_code == 200:
         try:
             response = json.loads(response.text)
-            df = pd.DataFrame(response['data'])
-            return df
+            return pd.DataFrame(response['data'])
         except json.JSONDecodeError as e:
             print("Failed to decode JSON:", e)
     else:
@@ -104,7 +104,7 @@ stats_expander.plotly_chart(fig3, config=plotly_config_set)
 
 
 st.subheader('How to Use It')
-         
+
 st.markdown(
 '''
 The Mind2Web dataset is large (including full HTML page states and screenshots), so we're hosting it in the [JungleGym API](https://docs.junglegym.ai/junglegym/api-documentation/mind2web-api).
@@ -161,15 +161,9 @@ json_data = df_subset.to_json(orient='records')
 st.write("Then, you can display and download the subset here:")
 
 subset_expander = st.expander("Data display")
-# subset_expander.button("Show subset", on_click=show_data, args=(True,))
-
-# if st.session_state.showing_subset_data:
-#     print ('Showing data')
-    #Adjust height of dataframe:
 subset_expander.write(f"{len(df_subset)} rows")
 height = max(45 * len(df_subset), 100) #45 is roughly the height of each row in the dataframe
-if height > 1000:
-    height = 1000
+height = min(height, 1000)
 subset_expander.dataframe(df_subset, use_container_width=True, height=height)
 
 subset_expander.download_button(

@@ -103,7 +103,12 @@ def curriculum_generator(website, task, actionable_elements, model=MODEL):
     response = response['choices'][0]['message']['content']
     #Self-verification implementation:
     message_history.append({"role": "assistant", "content": response})
-    message_history.append({"role": "user", "content": 'How would you improve these steps?\n\nOnly list the steps you will take to accomplish the complete task successfully: {}\n\nDo not explain.'.format(task)})#Try one more time to remove any additional non necessary content
+    message_history.append(
+        {
+            "role": "user",
+            "content": f'How would you improve these steps?\n\nOnly list the steps you will take to accomplish the complete task successfully: {task}\n\nDo not explain.',
+        }
+    )
     response = openai.ChatCompletion.create(model=model, messages=message_history, temperature=0.0)
     # Final response and metadata
     total_tokens = response['usage']['total_tokens']
@@ -122,18 +127,18 @@ def get_actionable_elements(page_link):
     if response.status_code != 200:
         print(f"Failed to get link data (requests): {response.status_code}")
         return None
-    print("Successfully got link data (requests) for {}".format(page_link))
+    print(f"Successfully got link data (requests) for {page_link}")
 
     soup = BeautifulSoup(response.content, 'html.parser')
     actionable_elements = ['a', 'button', 'input', 'textarea', 'select']
     event_attributes = ['onclick', 'onsubmit', 'onchange', 'onmouseover', 'onmouseout', 'onkeydown', 'onkeyup']
     elements_data = []
-    div_summary = {}
-
-    # Summarize div relationships
-    for div in soup.find_all('div', {HTML_ID_NAME: True}):
-        div_summary[div[HTML_ID_NAME]] = [child[HTML_ID_NAME] for child in div.find_all(True, {'id': True})]
-
+    div_summary = {
+        div[HTML_ID_NAME]: [
+            child[HTML_ID_NAME] for child in div.find_all(True, {'id': True})
+        ]
+        for div in soup.find_all('div', {HTML_ID_NAME: True})
+    }
     # Iterate over all elements
     for element in soup.find_all(True):
         tag_name = element.name
@@ -153,13 +158,12 @@ def get_actionable_elements(page_link):
             'tag_name': tag_name,
             'attributes': attributes,
             'parent_class': parent_class_name,
-            'parent_div_children': div_summary.get(parent_div_id, [])
+            'parent_div_children': div_summary.get(parent_div_id, []),
+            'field_name': None,
+            'link': None,
+            'event_attributes': None,
         }
 
-        # Additional details for actionable elements
-        element_info['field_name'] = None
-        element_info['link'] = None
-        element_info['event_attributes'] = None
         if tag_name in actionable_elements:
             element_info['field_name'] = element.get('name', '').strip() or element.get('value', '').strip() or element.text.strip()
             element_info['link'] = element.get('href', '') if tag_name == 'a' else ''
@@ -167,7 +171,16 @@ def get_actionable_elements(page_link):
 
         elements_data.append(element_info)
     #Remove empty elements:
-    elements_data = [element for element in elements_data if not ((element['id'] == None or element['id'] == '') and (element['field_name'] == None or element['field_name'] == '') and (element['link'] == None or element['link'] == ''))]
+    elements_data = [
+        element
+        for element in elements_data
+        if element['id'] is not None
+        and element['id'] != ''
+        or element['field_name'] is not None
+        and element['field_name'] != ''
+        or element['link'] is not None
+        and element['link'] != ''
+    ]
 
     end_time = time.perf_counter()
     duration = round(end_time - start_time, 2)
@@ -197,8 +210,11 @@ def get_pos_candidates_branch(website, task, curriculum, actionable_elements, st
     #print ("Elements: ", elements)
     preprompt = f"You want to accomplish this task: {task} in this website: {website}\n\nFrom the following list with dictionaries of HTML elements, what is the best HTML 'id' or 'field_name' or 'link' or 'href' candidate value from a dictionary for the step: '{step}'?\n\n {elements}\n\nDo not explain. Only respond with the exact 'id' or 'field_name' or 'href' or 'link' value from the dictionary, do not include the key. Each line is an HTML element that contains additional context for the HTML element."
     message_history = [
-        {"role": "system", "content": f"You are an intelligent programmer using python's Selenium. You are helping a colleague select the best candidate value in a dictionary that has HTML 'id' or HTML 'field_name' or HTML 'href' or 'link' value saved in a list of dictionaries. You must not lie or make up values. You only select an 'id' or 'field_name' or 'link' or 'href' value from the list of dictionaries."},
-        {"role": "user", "content": preprompt}
+        {
+            "role": "system",
+            "content": "You are an intelligent programmer using python's Selenium. You are helping a colleague select the best candidate value in a dictionary that has HTML 'id' or HTML 'field_name' or HTML 'href' or 'link' value saved in a list of dictionaries. You must not lie or make up values. You only select an 'id' or 'field_name' or 'link' or 'href' value from the list of dictionaries.",
+        },
+        {"role": "user", "content": preprompt},
     ]
     response = openai.ChatCompletion.create(model=model, messages=message_history, temperature=0.0)
     total_tokens = response['usage']['total_tokens']
@@ -252,11 +268,12 @@ def tree_thought_generation(website, task, curriculum, actionable_elements, CoT,
             for future in futures:
                 result = future.result()
                 website_results_ext.append(result)#append results of each branch
+
     run_tree()#Run first tree generation
     branch_stats = []
     for index, result in enumerate(website_results_ext):#Get individual branch stats for data logging
         index += 1
-        branch_name = str('branch_' + str(index))
+        branch_name = str(f'branch_{index}')
         branch_stats.append({branch_name: {'branch_result':result['response'], 'branch_duration': result['duration'], 'branch_tokens': result['total_tokens']}})
     total_tokens = 0
     for result in website_results_ext:#Get total tokens for all branches
@@ -285,7 +302,7 @@ def tree_thought_generation(website, task, curriculum, actionable_elements, CoT,
             branch_stats = []
             for index, result in enumerate(website_results_ext):#Get individual branch stats for data logging
                 index += 1
-                branch_name = str('branch_' + str(index))
+                branch_name = str(f'branch_{index}')
                 branch_stats.append({branch_name: {'branch_result':result['response'], 'branch_duration': result['duration'], 'branch_tokens': result['total_tokens']}})
             count = Counter(candiates)
             majority_id_vote = max(count, key=count.get)#majority vote for id for 2 runs (from n*2 responses)
@@ -322,19 +339,17 @@ def semiose_vetter(actionable_elements, query, embeddings_model='thenlper/gte-ba
     df['element'] = df.apply(lambda row: f"{row['id']} - {row['field_name']}" if len(row['field_name']) > 2 else row['id'], axis=1)
     #Create embeddings:
     embeddings = model.encode(df.element.to_list(), show_progress_bar=True)
-    embeddings = np.array([embedding for embedding in embeddings]).astype("float32")
+    embeddings = np.array(list(embeddings)).astype("float32")
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index = faiss.IndexIDMap(index)
     index.add_with_ids(embeddings, df.ID.values)
-    vector = model.encode(list([query]))
+    vector = model.encode([query])
     D, I = index.search(np.array(vector).astype("float32"), k=5)
     indexed_list = I.flatten().tolist()
     result_list = []
     for relevance_index, df_ID in enumerate(indexed_list):
         if df_ID >= 0:
-            results_dict = {}
-            results_dict['relevance_index'] = relevance_index
-            results_dict['id'] = df.at[df_ID, 'id']
+            results_dict = {'relevance_index': relevance_index, 'id': df.at[df_ID, 'id']}
             result_list.append(results_dict)
     end_time = time.perf_counter()
     duration = round(end_time - start_time, 2)
@@ -345,21 +360,28 @@ def code_generator(website, step_name, step_html_id, prev_code, model=MODEL):
     now_utc = datetime.now(pytz.timezone('UTC'))
     now_pacific = now_utc.astimezone(pytz.timezone('US/Pacific'))
     time = now_pacific.strftime('%H:%M, %d-%m-%Y')
-    if prev_code != None:
-        preprompt1 = f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nThis is the codebase that was used to execute previous steps on this page, please incorporate it with your solution without missing any of the previous steps in the code:\n\n{prev_code}\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the step. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
+    if prev_code is None:
+        preprompt1 = (
+            f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the task. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
+            if "cms.junglegym.ai" not in website
+            else f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nIf you need to login to the website, the username is 'admin' and the password is 'admin1234'\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the task. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
+        )
     else:
-        if "cms.junglegym.ai" not in website:
-            preprompt1 = f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the task. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
-        else:
-            preprompt1 = f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nIf you need to login to the website, the username is 'admin' and the password is 'admin1234'\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the task. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
+        preprompt1 = f"Write the python code to execute in Selenium the following step: '{step_name}', on the website {website}.\n\nThis is the codebase that was used to execute previous steps on this page, please incorporate it with your solution without missing any of the previous steps in the code:\n\n{prev_code}\n\nThe HTML element for this step to interact with is: {step_html_id}.\n\nOnly respond with the code to perform the step. Do not explain. Do not create HTML ids or HTML field_names, only use the one provided. If the HTML element contains 'id' then use Selenium's method 'By.ID', if the element contains 'field_name' then use Selenium's 'By.NAME' and so on. Avoid using 'By.TAG_NAME' as tag names are too generic and multiple elements have the same tag name. Use your best assessment for every HTML element to decide what Selenium method to use. At the top of the code, after the '```python', write the comments: '#Suggested code generated by JungleGym to incorporate with your Agent. Generated at (hr:min, day-month-year) Pacific Time: {time}"
     message_history=[
             {"role": "system", "content": "You are a helpful and smart python developer using python's Selenium. You only respond with python code. You are only using the chrome driver."},
             {"role": "user", "content": preprompt1}]
     response = openai.ChatCompletion.create(model=model, messages=message_history, temperature=0.0)
     response = response['choices'][0]['message']['content']
-    #Self-verification implementation:
-    message_history.append({"role": "assistant", "content": response})
-    message_history.append({"role": "user", "content": 'How would you improve the code if you are executing this task in Selenium {step_name}? Only respond with the executable code to perform the task. Do not explain.'})
+    message_history.extend(
+        (
+            {"role": "assistant", "content": response},
+            {
+                "role": "user",
+                "content": 'How would you improve the code if you are executing this task in Selenium {step_name}? Only respond with the executable code to perform the task. Do not explain.',
+            },
+        )
+    )
     response = openai.ChatCompletion.create(model=model, messages=message_history, temperature=0.0)
     total_tokens = response['usage']['total_tokens']
     response = response['choices'][0]['message']['content']
@@ -388,30 +410,7 @@ def save_skill_to_memory(curriculum, task, website, curriculum_tokens, step_name
     Updates the global SKILL_MEMORY list and prints status messages.
     """
     #First element in memory:
-    if len(SKILL_MEMORY) == 0:
-        step_number = 0 #We will count the first (first or home page) step as 0
-        task_element = {'task': task,
-                        'website': website,
-                        'curriculums':[{
-                                'curriculum': curriculum,
-                                'curriculum_tokens': curriculum_tokens,
-                                'steps':[{
-                                        'step_number': step_number,
-                                        'step_name': step_name,
-                                        'step_html_id': step_html_id,
-                                        'step_tag_name': step_tag_name,
-                                        'step_field_name': step_field_name,
-                                        'step_duration': step_duration,
-                                        'step_total_tokens': step_total_tokens,
-                                        'number_of_branches': number_of_branches,
-                                        'step_code': step_code,
-                                        'model': model,
-                                        'branch_stats': branch_stats,
-                                    }]
-                                }]
-                        }
-        SKILL_MEMORY.append(task_element)
-    else:
+    if len(SKILL_MEMORY) != 0:
         for t in SKILL_MEMORY:
             if t['task'] == task:#If the task is already in the memory
                 for c in t['curriculums']:
@@ -432,8 +431,6 @@ def save_skill_to_memory(curriculum, task, website, curriculum_tokens, step_name
                             'branch_stats': branch_stats,
                             })
                         return
-                    else:
-                        pass
                 #In case the curriculum is not in the memory for an existing task:
                 step_number = 0#We will count the first (home page) step as 0
                 t['curriculums'].append(
@@ -456,31 +453,28 @@ def save_skill_to_memory(curriculum, task, website, curriculum_tokens, step_name
                             ]
                         })
                 return
-            else:
-                pass
-        #If the task is not in the memory:
-        step_number = 0 #We will count the first (first or home page) step as 0
-        task_element = {'task': task,
-                        'website': website,
-                        'curriculums':[{
-                                'curriculum': curriculum,
-                                'curriculum_tokens': curriculum_tokens,
-                                'steps':[{
-                                        'step_number': step_number,
-                                        'step_name': step_name,
-                                        'step_html_id': step_html_id,
-                                        'step_tag_name': step_tag_name,
-                                        'step_field_name': step_field_name,
-                                        'step_duration': step_duration,
-                                        'step_total_tokens': step_total_tokens,
-                                        'number_of_branches': number_of_branches,
-                                        'step_code': step_code,
-                                        'model': model,
-                                        'branch_stats': branch_stats,
-                                    }]
+    step_number = 0 #We will count the first (first or home page) step as 0
+    task_element = {'task': task,
+                    'website': website,
+                    'curriculums':[{
+                            'curriculum': curriculum,
+                            'curriculum_tokens': curriculum_tokens,
+                            'steps':[{
+                                    'step_number': step_number,
+                                    'step_name': step_name,
+                                    'step_html_id': step_html_id,
+                                    'step_tag_name': step_tag_name,
+                                    'step_field_name': step_field_name,
+                                    'step_duration': step_duration,
+                                    'step_total_tokens': step_total_tokens,
+                                    'number_of_branches': number_of_branches,
+                                    'step_code': step_code,
+                                    'model': model,
+                                    'branch_stats': branch_stats,
                                 }]
-                        }
-        SKILL_MEMORY.append(task_element)
+                            }]
+                    }
+    SKILL_MEMORY.append(task_element)
 
 def skill_search(query, website, embeddings_model='thenlper/gte-base'):
     """
@@ -507,19 +501,20 @@ def skill_search(query, website, embeddings_model='thenlper/gte-base'):
     df['ID'] = df.index
     #Create embeddings:
     embeddings = model.encode(df.task.to_list(), show_progress_bar=True)
-    embeddings = np.array([embedding for embedding in embeddings]).astype("float32")
+    embeddings = np.array(list(embeddings)).astype("float32")
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index = faiss.IndexIDMap(index)
     index.add_with_ids(embeddings, df.ID.values)
-    vector = model.encode(list([query]))
+    vector = model.encode([query])
     D, I = index.search(np.array(vector).astype("float32"), k=5)
     indexed_list = I.flatten().tolist()
     result_list = []
     for relevance_index, df_ID in enumerate(indexed_list):
         if df_ID >= 0:
-            results_dict = {}
-            results_dict['relevance_index'] = relevance_index
-            results_dict['task'] = df.at[df_ID, 'task']
+            results_dict = {
+                'relevance_index': relevance_index,
+                'task': df.at[df_ID, 'task'],
+            }
             result_list.append(results_dict)
     end_time = time.perf_counter()
     duration = round(end_time - start_time, 2)
@@ -556,7 +551,7 @@ async def root(request: Request):  # Added request: Request
 @limiter.limit(RATE_LIMIT)
 async def run_task(request: Request, task: str = 'buy the cheapest coffee with best reviews', page: str = URL_DICT['shopping']['link'], curriculum=None, prev_code=None, step=None):
     def event_stream(task=task, page=page, curriculum=curriculum, prev_code=prev_code, step=step):
-        if step == None:#First step (if query is just staring):
+        if step is None:#First step (if query is just staring):
             print ("Running first time!")
             #Generate curriculum for new task:
             actionable_elements = get_actionable_elements(page)['actionable_elements']
@@ -578,7 +573,7 @@ async def run_task(request: Request, task: str = 'buy the cheapest coffee with b
             start_time = time.perf_counter()
             prev_code = None
             chain_generator_result = chain_generator(website_name=page, task=task, curriculum=curriculum, actionable_elements=actionable_elements, step=step_list[0], prev_code=prev_code)
-            if chain_generator_result == None: #Temp. TODO: modify this later, This is just a placeholder for testing 
+            if chain_generator_result is None: #Temp. TODO: modify this later, This is just a placeholder for testing 
                 print ('No HTML id found for this step.')
                 end_time = time.perf_counter()
                 step_duration = round(end_time - start_time, 2)
@@ -631,13 +626,13 @@ async def run_task(request: Request, task: str = 'buy the cheapest coffee with b
                     "model": MODEL,
                 }
                 yield f"data:{json.dumps(result)}\n\n"
-        
+
         else:
             print ("Running again!")
             actionable_elements = get_actionable_elements(page)['actionable_elements']
             start_time = time.perf_counter()
             chain_generator_result = chain_generator(website_name=page, task=task, curriculum=curriculum, step=step, prev_code=prev_code, actionable_elements=actionable_elements)
-            if chain_generator_result == None: #Temp. TODO: modify this later, This is just for testing and don't breaking the code
+            if chain_generator_result is None: #Temp. TODO: modify this later, This is just for testing and don't breaking the code
                 print ('No HTML id found for this step.')
                 end_time = time.perf_counter()
                 step_duration = round(end_time - start_time, 2)
@@ -688,4 +683,5 @@ async def run_task(request: Request, task: str = 'buy the cheapest coffee with b
                     "model": MODEL,
                 }
                 yield f"data:{json.dumps(result)}\n\n"
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
