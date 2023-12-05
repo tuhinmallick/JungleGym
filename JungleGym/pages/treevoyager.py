@@ -95,8 +95,7 @@ def load_tasks():#Loads WebArena tasks from API
     if response.status_code == 200:
         try:
             response = json.loads(response.text)
-            df = pd.DataFrame(response['data'])
-            return df
+            return pd.DataFrame(response['data'])
         except json.JSONDecodeError as e:
             print(e)
             return None
@@ -121,7 +120,7 @@ def ensure_http_prefix(link) -> str:
     return link
 
 def get_screenshot(url: str, task: str) -> str:
-    image_path = 'screenshots/' + task + '_screenshot.png'
+    image_path = f'screenshots/{task}_screenshot.png'
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -140,8 +139,8 @@ def run_task(task, url, curriculum, prev_code, step_name):
     }
     response = requests.get(TREE_VOYAGER_SERVER_ENDPOINT + "/run_step", params=params, stream=True)
     if response.status_code != 200:
-        st.error("Error running task: " + str(response.status_code))
-        #st.stop()
+        st.error(f"Error running task: {response.status_code}")
+            #st.stop()
     try:
         for line in response.iter_lines():
             decoded_line = line.decode('utf-8')
@@ -168,7 +167,7 @@ def run_task(task, url, curriculum, prev_code, step_name):
                 # Display the streamed outputs of the API call in a box
                 if 'step_tag_name' in data and 'step_field_name' in data and 'step_duration' in data and 'step_total_tokens' in data:
                     model_name = data['model']
-                    if "gpt-4-1106-preview" in data['model']:
+                    if "gpt-4-1106-preview" in model_name:
                         model_name = "gpt-4-1106-preview (GPT-4-Turbo 128K)"
                     info_data = {
                         'HTML id':data['step_html_id'],
@@ -224,7 +223,11 @@ webarena_exp.markdown("<sub>Note: if you are using the http://cms.junglegym.ai/a
 
 # CUSTOM URL
 custom_url_exp = st.expander("Custom web page")
-custom_url = custom_url_exp.text_input(f'Enter a custom URL (e.g. "yoursite.com", "shop.junglegym.ai", etc): ', key="external_url", on_change=reset_run)
+custom_url = custom_url_exp.text_input(
+    'Enter a custom URL (e.g. "yoursite.com", "shop.junglegym.ai", etc): ',
+    key="external_url",
+    on_change=reset_run,
+)
 custom_url = ensure_http_prefix(custom_url)
 custom_task = custom_url_exp.text_input('Enter a custom task (e.g. buy coffee, rent the cheapest truck, etc):', key="task_input", on_change=reset_run)
 custom_url_exp.markdown("<sub>Note: this will fail on pages requiring authentication.</sub>", unsafe_allow_html=True)
@@ -300,19 +303,23 @@ if st.session_state['running']:
     else:
         print ("Same URL, using previous screenshot", url)
         image_placeholder.image(st.session_state['image_path'], caption="Page screenshot for this step", width=1000)
-        html_interactable_elements_placeholder.markdown(f"#### Interactable HTML elements on this page:")
+        html_interactable_elements_placeholder.markdown(
+            "#### Interactable HTML elements on this page:"
+        )
         table1_placeholder.dataframe(st.session_state['actionable_elements'])
     if st.session_state['counter'] == 0:#if it is the first time running:
         with st.spinner('Generating response for first step...'):
             for result in run_task(task=task, url=url, curriculum=None, prev_code=None, step_name=None):
                 if 'actionable_elements' in result:
-                    html_interactable_elements_placeholder.markdown(f"### Interactable HTML elements on this page:")
+                    html_interactable_elements_placeholder.markdown(
+                        "### Interactable HTML elements on this page:"
+                    )
                     df_elements = result['actionable_elements']
                     st.session_state['actionable_elements'] = df_elements
                     table1_placeholder.dataframe(df_elements)
                 if 'curriculum' in result:
                     st.session_state['curriculum'] = result['curriculum']
-                    curriculum_title_placeholder.markdown(f"### Suggested Curriculum:")
+                    curriculum_title_placeholder.markdown("### Suggested Curriculum:")
                     curriculum_placeholder.write(f"{result['curriculum']}")
                 if 'step_name' in result:
                     st.session_state['step_name'] = result['step_name']
@@ -327,7 +334,7 @@ if st.session_state['running']:
                             print("Step not found in curriculum")   
                     else:
                         #next_step = "Step not found in curriculum"
-                        print("Step not found in curriculum")    
+                        print("Step not found in curriculum")
                 if 'step_code' in result:
                     st.session_state['step_code'] = result['step_code']
                     code_title_placeholder.markdown('##### Step ' + st.session_state['step_name'])
@@ -349,21 +356,25 @@ if st.session_state['running']:
             print("Counter exceeds the length of step_list.")
         task_ = st.session_state['task']
         url_ = st.session_state['url']
-        loading_message = st.text('Generating response for step {}...'.format(str(st.session_state['counter'] + 1)))
+        loading_message = st.text(
+            f"Generating response for step {str(st.session_state['counter'] + 1)}..."
+        )
         print ("HERE THE STEP NAME", step_name)
         for result in run_task(task=task_, url=url_, curriculum=curriculum, prev_code=prev_code, step_name=step_name):
             if 'actionable_elements' in result and url != st.session_state['url']:
-                html_interactable_elements_placeholder.markdown(f"#### Interactable HTML elements on this page:")
+                html_interactable_elements_placeholder.markdown(
+                    "#### Interactable HTML elements on this page:"
+                )
                 df_elements = result['actionable_elements']
                 st.session_state['actionable_elements'] = df_elements
                 table1_placeholder.dataframe(df_elements)
             if 'curriculum' in result:
                 st.session_state['curriculum'] = result['curriculum']
-                curriculum_title_placeholder.markdown(f"#### Suggested Curriculum:")
+                curriculum_title_placeholder.markdown("#### Suggested Curriculum:")
                 curriculum_placeholder.write(f"{result['curriculum']}")
             if 'step_name' in result:
                 st.session_state['step_name'] = result['step_name']
-                step_name_placeholder.subheader('Step ' + result['step_name'])      
+                step_name_placeholder.subheader('Step ' + result['step_name'])
             if 'step_code' in result:
                 st.session_state['step_code'] = result['step_code']
                 code_title_placeholder.markdown('###### Sample code for this step (the code accounts for all previous steps):')
@@ -371,7 +382,9 @@ if st.session_state['running']:
             if 'info_data' in result:
                 st.session_state['info_data'] = result['info_data']
                 table2_placeholder.table(pd.DataFrame(result['info_data'], index=[0]))
-        loading_message.text('Done generating response for step {}.'.format(str(st.session_state['counter'] + 1)))
+        loading_message.text(
+            f"Done generating response for step {str(st.session_state['counter'] + 1)}."
+        )
         st.session_state['counter'] += 1
         try:
             next_step = st.session_state['step_list'][st.session_state['counter']]

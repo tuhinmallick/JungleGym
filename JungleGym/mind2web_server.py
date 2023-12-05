@@ -11,6 +11,7 @@ Version: 0.0.9 (Experimental)
 Status: Development
 Python version: 3.9.15
 """
+
 #External libraries:
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -46,12 +47,8 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-#####################TOKEN API KEY################################
-#FatsAPI keys auth: TODO: replace this with a database:
-#API KEYS from database
-API_KEYS = ['']
 MIND2WEB_API_KEY = os.environ.get('MIND2WEB_API_KEY', default='')
-API_KEYS.append(MIND2WEB_API_KEY)
+API_KEYS = ['', MIND2WEB_API_KEY]
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")  # use token authentication
 
 def api_key_auth(api_key: str = Depends(oauth2_scheme)):

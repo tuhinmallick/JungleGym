@@ -12,6 +12,7 @@ Version: 0.9 (Experimental)
 Status: Development
 Python version: 3.9.15
 """
+
 # External libraries:
 import streamlit as st
 import pandas as pd
@@ -28,7 +29,7 @@ API_ENDPOINT = 'http://api.junglegym.ai'
 API_KEY = os.environ.get('MIND2WEB_API_KEY', default='')
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer {}'.format(API_KEY)
+    'Authorization': f'Bearer {API_KEY}',
 }
 
 init_page()
@@ -41,8 +42,7 @@ def load_agent_instruct():
     if response.status_code == 200:
         try:
             response = json.loads(response.text)
-            df = pd.DataFrame(response['data'])
-            return df
+            return pd.DataFrame(response['data'])
         except json.JSONDecodeError as e:
             print("Failed to decode JSON:", e)
     else:
@@ -112,7 +112,7 @@ def remove_loss_key(entry):
 
 conversations = df['conversations']
 for i, convo in enumerate(conversations):
-    for j, entry in enumerate(convo):
+    for entry in convo:
         if 'loss' in entry:
             del entry['loss']
     conversations[i] = convo
@@ -193,8 +193,7 @@ if selected_original_category:
             st.json(row['conversations'])
 
     def to_jsonl(df):
-        jsonl_str = df.to_json(orient='records', lines=True)
-        return jsonl_str
+        return df.to_json(orient='records', lines=True)
 
     if selected_original_category != 'All':
         download_df = df[df['category'] == selected_original_category]
